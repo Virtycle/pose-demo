@@ -3,12 +3,14 @@ export class Camera {
     width: number;
     height: number;
 
+    private streamFlag = false;
+
     constructor(protected videoEle: HTMLVideoElement) {
         this.width = videoEle.clientWidth;
         this.height = videoEle.clientWidth;
     }
 
-    setCameraStream(stream: MediaStream): Promise<void> {
+    setCameraStream(stream: MediaStream): Promise<HTMLVideoElement> {
         this.videoEle.srcObject = stream;
         return new Promise((resolve) => {
             this.videoEle.onloadedmetadata = () => {
@@ -17,9 +19,14 @@ export class Camera {
                 this.width = this.videoEle.width = videoWidth;
                 this.height = this.videoEle.height = videoHeight;
                 this.videoEle.play();
-                resolve();
+                this.streamFlag = true;
+                resolve(this.videoEle);
             };
         });
+    }
+
+    get videoElement() {
+        return this.streamFlag ? this.videoEle : null;
     }
 
     static async setup(videoEle: HTMLVideoElement, cameraParam: { targetFPS: number }): Promise<Camera> {
@@ -42,7 +49,7 @@ export class Camera {
 
         const stream = await navigator.mediaDevices.getUserMedia(videoConfig);
 
-        camera.setCameraStream(stream);
+        await camera.setCameraStream(stream);
 
         return camera;
     }
