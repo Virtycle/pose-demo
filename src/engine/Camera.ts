@@ -7,7 +7,7 @@ export class Camera {
 
     constructor(protected videoEle: HTMLVideoElement) {
         this.width = videoEle.clientWidth;
-        this.height = videoEle.clientWidth;
+        this.height = videoEle.clientHeight;
     }
 
     setCameraStream(stream: MediaStream): Promise<HTMLVideoElement> {

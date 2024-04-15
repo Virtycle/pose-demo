@@ -17,6 +17,9 @@ html,body {
         position: relative;
         #camera {
             position: absolute;
+            visibility: hidden;
+            height: 400px;
+            width: 500px;
         }
     }
 }
