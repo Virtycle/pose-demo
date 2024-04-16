@@ -30,4 +30,8 @@ export class Renderer2D {
     stop() {
         this.animation.stop();
     }
+
+    updatePoses(pose: any) {
+        console.log(pose);
+    }
 }
