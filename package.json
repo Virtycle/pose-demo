@@ -14,7 +14,6 @@
         "@tensorflow/tfjs-backend-webgl": "^4.17.0",
         "@tensorflow/tfjs-converter": "^4.17.0",
         "@tensorflow/tfjs-core": "^4.17.0",
-        "konva": "^9.3.6",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "three": "^0.162.0"
@@ -23,6 +22,7 @@
         "@types/node": "^20.11.29",
         "@types/react": "^18.2.64",
         "@types/react-dom": "^18.2.21",
+        "@types/three": "^0.163.0",
         "@typescript-eslint/eslint-plugin": "^7.1.1",
         "@typescript-eslint/parser": "^7.1.1",
         "@vitejs/plugin-react": "^4.2.1",

@@ -1,9 +1,12 @@
 import * as poseDetection from '@tensorflow-models/pose-detection';
+import type { Pose, Keypoint, PoseDetectorInput } from '@tensorflow-models/pose-detection';
 import * as tf from '@tensorflow/tfjs-core';
 import '@tensorflow/tfjs-backend-webgl';
 
 export class PoseDetection {
     protected detector: any;
+
+    public static threshold = 0.85;
 
     async createDetector() {
         const model = poseDetection.SupportedModels.BlazePose;
@@ -17,7 +20,7 @@ export class PoseDetection {
         return this;
     }
 
-    async estimatePoses(img: HTMLVideoElement) {
-        return this.detector.estimatePoses(img);
+    async estimatePoses(img: PoseDetectorInput): Promise<Pose[]> {
+        return this.detector.estimatePoses(img, { flipHorizontal: false });
     }
 }
