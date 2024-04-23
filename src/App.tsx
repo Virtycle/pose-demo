@@ -30,7 +30,9 @@ function App() {
                         const poses = await detector!.estimatePoses(canvas2dRef.current as HTMLCanvasElement);
                         if (poses.length) {
                             const poseTrust = poses[0].keypoints;
+                            const poseTrust3d = poses[0].keypoints3D;
                             render2d!.updatePoses(poseTrust);
+                            render3d!.updatePoses(poseTrust3d);
                         }
                         render2dRef.current!.draw();
                         render3d.render();

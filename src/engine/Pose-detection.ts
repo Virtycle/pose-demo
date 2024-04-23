@@ -1,5 +1,5 @@
 import * as poseDetection from '@tensorflow-models/pose-detection';
-import type { Pose, Keypoint, PoseDetectorInput } from '@tensorflow-models/pose-detection';
+import type { Pose, PoseDetectorInput } from '@tensorflow-models/pose-detection';
 import * as tf from '@tensorflow/tfjs-core';
 import '@tensorflow/tfjs-backend-webgl';
 
