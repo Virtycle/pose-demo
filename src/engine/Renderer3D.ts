@@ -85,6 +85,8 @@ export class Renderer3D {
         [key in PoseToboneMap]: { bone: Bone; vec: Vector3 };
     };
 
+    private quater = new Quaternion().setFromUnitVectors(new Vector3(0, 1, 0), new Vector3(0, 0, 1));
+
     constructor(params: { div: HTMLDivElement }) {
         const divEle = params.div;
         this.renderer = new WebGLRenderer(rendererParam);
@@ -152,6 +154,7 @@ export class Renderer3D {
             // const animations = gltf.animations;
             const helper = new SkeletonHelper(model);
             _self.bones = helper.bones;
+            console.log(_self.bones);
             _self.wrappedScene.add(model);
             _self.wrappedScene.add(helper);
             model.traverse(function (object) {
@@ -191,10 +194,16 @@ export class Renderer3D {
                 (score2 && score2 <= PoseDetection.threshold)
             )
                 return;
-            _vec3.set(kp2.x - kp1.x, kp2.y - kp1.y, (kp2.z as number) - (kp1.z as number)).normalize();
+            _vec3
+                .set(kp2.x - kp1.x, kp2.y - kp1.y, (kp2.z as number) - (kp1.z as number))
+                .normalize()
+                .applyQuaternion(this.quater);
             if (this.boneMap[j as PoseToboneMap]) {
-                console.log(j, name2);
                 this.boneMap[j as PoseToboneMap].vec.copy(_vec3);
+                if (j === 12 && i === 11) {
+                    this.boneMap[i as PoseToboneMap].vec.copy(_vec3.multiplyScalar(-1));
+                }
+                console.log(name1, name2, _vec3.x, _vec3.y, _vec3.z);
             }
         });
         this.updateBones();
@@ -207,8 +216,9 @@ export class Renderer3D {
                 const boneWrapParent =
                     this.boneMap[PoseToboneMap[boneWrap.bone.parent.name as keyof typeof PoseToboneMap]];
                 if (boneWrapParent.vec.length() === 0 || boneWrap.vec.length() === 0) continue;
+                // console.log(boneWrapParent.bone.name, boneWrapParent.vec, boneWrap.bone.name, boneWrap.vec);
                 _quater.setFromUnitVectors(boneWrapParent.vec, boneWrap.vec);
-                boneWrap.bone.quaternion.premultiply(_quater);
+                boneWrapParent.bone.quaternion.copy(_quater);
             }
         }
         for (const key in this.boneMap) {
