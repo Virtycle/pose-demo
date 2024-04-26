@@ -13,6 +13,11 @@ import {
     Bone,
     Vector3,
     Quaternion,
+    AxesHelper,
+    Skeleton,
+    SkinnedMesh,
+    Matrix3,
+    Matrix4,
 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -36,14 +41,14 @@ export enum PoseToboneMap {
     'mixamorigLeftArm' = 13,
     'mixamorigLeftHand' = 15,
     'mixamorigRightShoulder' = 12,
-    'mixamorigRightArm' = 14,
-    'mixamorigRightHand' = 16,
-    'mixamorigLeftUpLeg' = 23,
-    'mixamorigLeftLeg' = 25,
-    'mixamorigLeftFoot' = 27,
-    'mixamorigRightUpLeg' = 24,
-    'mixamorigRightLeg' = 26,
-    'mixamorigRightFoot' = 28,
+    // 'mixamorigRightArm' = 14,
+    // 'mixamorigRightHand' = 16,
+    // 'mixamorigLeftUpLeg' = 23,
+    // 'mixamorigLeftLeg' = 25,
+    // 'mixamorigLeftFoot' = 27,
+    // 'mixamorigRightUpLeg' = 24,
+    // 'mixamorigRightLeg' = 26,
+    // 'mixamorigRightFoot' = 28,
 }
 
 export enum PoseIndexMap {
@@ -51,14 +56,14 @@ export enum PoseIndexMap {
     'left_elbow' = 13,
     'left_wrist' = 15,
     'right_shoulder' = 12,
-    'right_elbow' = 14,
-    'right_wrist' = 16,
-    'left_hip' = 23,
-    'left_knee' = 25,
-    'left_ankle' = 27,
-    'right_hip' = 24,
-    'right_knee' = 26,
-    'right_ankle' = 28,
+    // 'right_elbow' = 14,
+    // 'right_wrist' = 16,
+    // 'left_hip' = 23,
+    // 'left_knee' = 25,
+    // 'left_ankle' = 27,
+    // 'right_hip' = 24,
+    // 'right_knee' = 26,
+    // 'right_ankle' = 28,
 }
 export class Renderer3D {
     protected camera: PerspectiveCamera;
@@ -79,13 +84,15 @@ export class Renderer3D {
 
     private modelLoaded = false;
 
-    private bones!: Bone[];
+    private skeleton!: Skeleton;
 
     private boneMap: { [key in PoseToboneMap]: { bone: Bone; vec: Vector3 } } = {} as {
         [key in PoseToboneMap]: { bone: Bone; vec: Vector3 };
     };
 
-    private quater = new Quaternion().setFromUnitVectors(new Vector3(0, 1, 0), new Vector3(0, 0, 1));
+    // private quater = new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), new Vector3(0, 1, 0));
+    // private matrix = new Matrix3();
+    private quater = new Quaternion();
 
     constructor(params: { div: HTMLDivElement }) {
         const divEle = params.div;
@@ -128,6 +135,15 @@ export class Renderer3D {
         mesh.rotation.x = -Math.PI / 2;
         mesh.receiveShadow = true;
         this.wrappedScene.add(mesh);
+
+        const axesHelper = new AxesHelper(3);
+        this.wrappedScene.add(axesHelper);
+        const matrix3 = new Matrix3().set(0, 0, 1, 1, 0, 0, 0, 1, 0).transpose();
+        const matrix4 = new Matrix4().setFromMatrix3(matrix3);
+        // this.matrix.copy(matrix3);
+        const qua = new Quaternion().setFromRotationMatrix(matrix4);
+        this.quater.copy(qua);
+        // console.log(qua, this.quater);
     }
 
     public resize(width: number, height: number, resizeRenderer = true): void {
@@ -151,17 +167,18 @@ export class Renderer3D {
         this.loader.load('/Xbot.glb', function (gltf) {
             _self.modelLoaded = true;
             const model = gltf.scene;
+            const skinnedMesh = model.getObjectByName('Beta_Joints');
+            _self.skeleton = (skinnedMesh as SkinnedMesh).skeleton;
             // const animations = gltf.animations;
             const helper = new SkeletonHelper(model);
-            _self.bones = helper.bones;
-            console.log(_self.bones);
             _self.wrappedScene.add(model);
             _self.wrappedScene.add(helper);
             model.traverse(function (object) {
                 if ((object as Mesh).isMesh) object.castShadow = true;
             });
-            for (let index = 0; index < _self.bones.length; index++) {
-                const bone = _self.bones[index];
+            const bones = _self.skeleton.bones;
+            for (let index = 0; index < bones.length; index++) {
+                const bone = bones[index];
                 if (PoseToboneMap.hasOwnProperty(bone.name)) {
                     _self.boneMap[PoseToboneMap[bone.name as keyof typeof PoseToboneMap]] = {
                         bone,
@@ -194,16 +211,18 @@ export class Renderer3D {
                 (score2 && score2 <= PoseDetection.threshold)
             )
                 return;
-            _vec3
-                .set(kp2.x - kp1.x, kp2.y - kp1.y, (kp2.z as number) - (kp1.z as number))
-                .normalize()
-                .applyQuaternion(this.quater);
+            _vec3.set(kp2.x - kp1.x, kp2.y - kp1.y, (kp2.z as number) - (kp1.z as number)).normalize();
+            console.log('origin', name1, kp1.x, kp1.y, kp1.z);
+            console.log('origin', name2, kp2.x, kp2.y, kp2.z);
+            // console.log('before', kp1.x, kp1.y, kp1.z);
+            _vec3.applyQuaternion(this.quater);
+            // console.log('after', name1, name2, _vec3.x, _vec3.y, _vec3.z);
+
             if (this.boneMap[j as PoseToboneMap]) {
                 this.boneMap[j as PoseToboneMap].vec.copy(_vec3);
-                if (j === 12 && i === 11) {
-                    this.boneMap[i as PoseToboneMap].vec.copy(_vec3.multiplyScalar(-1));
-                }
-                console.log(name1, name2, _vec3.x, _vec3.y, _vec3.z);
+                // if (j === 12 && i === 11) {
+                //     this.boneMap[i as PoseToboneMap].vec.copy(_vec3.multiplyScalar(-1));
+                // }
             }
         });
         this.updateBones();
@@ -217,7 +236,7 @@ export class Renderer3D {
                     this.boneMap[PoseToboneMap[boneWrap.bone.parent.name as keyof typeof PoseToboneMap]];
                 if (boneWrapParent.vec.length() === 0 || boneWrap.vec.length() === 0) continue;
                 // console.log(boneWrapParent.bone.name, boneWrapParent.vec, boneWrap.bone.name, boneWrap.vec);
-                _quater.setFromUnitVectors(boneWrapParent.vec, boneWrap.vec);
+                _quater.setFromUnitVectors(boneWrap.vec, boneWrapParent.vec);
                 boneWrapParent.bone.quaternion.copy(_quater);
             }
         }
