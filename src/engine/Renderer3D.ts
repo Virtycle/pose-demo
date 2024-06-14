@@ -41,14 +41,14 @@ export enum PoseToboneMap {
     'mixamorigLeftArm' = 13,
     'mixamorigLeftHand' = 15,
     'mixamorigRightShoulder' = 12,
-    // 'mixamorigRightArm' = 14,
-    // 'mixamorigRightHand' = 16,
-    // 'mixamorigLeftUpLeg' = 23,
-    // 'mixamorigLeftLeg' = 25,
-    // 'mixamorigLeftFoot' = 27,
-    // 'mixamorigRightUpLeg' = 24,
-    // 'mixamorigRightLeg' = 26,
-    // 'mixamorigRightFoot' = 28,
+    'mixamorigRightArm' = 14,
+    'mixamorigRightHand' = 16,
+    'mixamorigLeftUpLeg' = 23,
+    'mixamorigLeftLeg' = 25,
+    'mixamorigLeftFoot' = 27,
+    'mixamorigRightUpLeg' = 24,
+    'mixamorigRightLeg' = 26,
+    'mixamorigRightFoot' = 28,
 }
 
 export enum PoseIndexMap {
@@ -56,14 +56,14 @@ export enum PoseIndexMap {
     'left_elbow' = 13,
     'left_wrist' = 15,
     'right_shoulder' = 12,
-    // 'right_elbow' = 14,
-    // 'right_wrist' = 16,
-    // 'left_hip' = 23,
-    // 'left_knee' = 25,
-    // 'left_ankle' = 27,
-    // 'right_hip' = 24,
-    // 'right_knee' = 26,
-    // 'right_ankle' = 28,
+    'right_elbow' = 14,
+    'right_wrist' = 16,
+    'left_hip' = 23,
+    'left_knee' = 25,
+    'left_ankle' = 27,
+    'right_hip' = 24,
+    'right_knee' = 26,
+    'right_ankle' = 28,
 }
 
 export class Renderer3D {
@@ -87,9 +87,10 @@ export class Renderer3D {
 
     private skeleton!: Skeleton;
 
-    private boneMap: { [key in PoseToboneMap]: { bone: Bone; vec: Vector3; originVec: Vector3 } } = {} as {
-        [key in PoseToboneMap]: { bone: Bone; vec: Vector3; originVec: Vector3 };
-    };
+    private boneMap: { [key in PoseToboneMap]: { bone: Bone; vec: Vector3; originVec: Vector3; index: number } } =
+        {} as {
+            [key in PoseToboneMap]: { bone: Bone; vec: Vector3; originVec: Vector3; index: number };
+        };
 
     constructor(params: { div: HTMLDivElement }) {
         const divEle = params.div;
@@ -174,20 +175,18 @@ export class Renderer3D {
                 if ((object as Mesh).isMesh) object.castShadow = true;
             });
             const bones = _self.skeleton.bones;
+            bones[0].updateWorldMatrix(true, true);
             for (let index = 0; index < bones.length; index++) {
                 const bone = bones[index];
-                _vec3.set(bone.position.x, bone.position.y, bone.position.z);
-                _vec3.applyMatrix4(skinnedMesh.bindMatrix);
-                _matrix4.multiplyMatrices(bone.matrixWorld, _self.skeleton.boneInverses[index]);
-                _vec3.applyMatrix4(_matrix4).applyMatrix4(skinnedMesh.bindMatrixInverse).normalize();
-                console.log(_vec3.x, _vec3.y, _vec3.z, bone.name);
-                bone.getWorldDirection(_vec3)
-                console.log(_vec3.x, _vec3.y, _vec3.z)
+                _vec3.set(0, 0, 0);
+                bone.updateMatrix();
+                _vec3.applyMatrix4(bone.matrix).normalize();
                 if (PoseToboneMap.hasOwnProperty(bone.name)) {
                     _self.boneMap[PoseToboneMap[bone.name as keyof typeof PoseToboneMap]] = {
                         bone,
                         vec: new Vector3(),
                         originVec: _vec3.clone(),
+                        index,
                     };
                 }
             }
@@ -200,32 +199,47 @@ export class Renderer3D {
 
     public updatePoses(poses?: Keypoint[]) {
         if (!poses || !this.modelLoaded) return;
-        poseDetection.util.getAdjacentPairs(poseDetection.SupportedModels.BlazePose).forEach(([i, j]) => {
-            const kp1 = poses[i];
-            const kp2 = poses[j];
-            const name1 = kp1.name;
-            const name2 = kp2.name;
-            const score1 = kp1.score;
-            const score2 = kp2.score;
-            if (
-                !name1 ||
-                !name2 ||
-                !score1 ||
-                (score1 && score1 < PoseDetection.threshold) ||
-                !score2 ||
-                (score2 && score2 < PoseDetection.threshold)
-            )
-                return;
-            _vec3.set(-kp2.x + kp1.x, -kp2.y + kp1.y, -(kp2.z as number) + (kp1.z as number)).normalize();
-            if (this.boneMap[j as PoseToboneMap]) {
-                // console.log(name1, _vec3.x, _vec3.y, _vec3.z);
-                this.boneMap[j as PoseToboneMap].vec.copy(_vec3);
-                if (j === 12 && i === 11) {
-                    this.boneMap[j as PoseToboneMap].vec.copy(_vec3);
-                    this.boneMap[i as PoseToboneMap].vec.copy(_vec3.multiplyScalar(-1));
+        for (let index = 0; index < poses.length; index++) {
+            const pose = poses[index];
+            if (pose.name && pose.score && PoseToboneMap.hasOwnProperty(pose.name)) {
+                if (pose.score >= PoseDetection.threshold) {
+                    this.boneMap[PoseToboneMap[pose.name as keyof typeof PoseToboneMap]].vec.set(
+                        pose.x,
+                        pose.y,
+                        pose.z as number,
+                    );
+                } else {
+                    this.boneMap[PoseToboneMap[pose.name as keyof typeof PoseToboneMap]].vec.set(0, 0, 0);
                 }
             }
-        });
+        }
+        // poseDetection.util.getAdjacentPairs(poseDetection.SupportedModels.BlazePose).forEach(([i, j]) => {
+        //     const kp1 = poses[i];
+        //     const kp2 = poses[j];
+        //     const name1 = kp1.name;
+        //     const name2 = kp2.name;
+        //     const score1 = kp1.score;
+        //     const score2 = kp2.score;
+        //     if (
+        //         !name1 ||
+        //         !name2 ||
+        //         !score1 ||
+        //         (score1 && score1 < PoseDetection.threshold) ||
+        //         !score2 ||
+        //         (score2 && score2 < PoseDetection.threshold)
+        //     )
+        //         return;
+        //     console.log(name2, name1);
+        //     _vec3.set(kp2.x - kp1.x, kp2.y - kp1.y, (kp2.z as number) - (kp1.z as number)).normalize();
+        //     if (this.boneMap[j as PoseToboneMap]) {
+        //         // console.log(name1, _vec3.x, _vec3.y, _vec3.z);
+        //         this.boneMap[j as PoseToboneMap].vec.copy(_vec3);
+        //         if (j === 12 && i === 11) {
+        //             this.boneMap[j as PoseToboneMap].vec.copy(_vec3);
+        //             this.boneMap[i as PoseToboneMap].vec.copy(_vec3.multiplyScalar(-1));
+        //         }
+        //     }
+        // });
         this.updateBones();
     }
 
@@ -233,13 +247,14 @@ export class Renderer3D {
         for (const key in this.boneMap) {
             const boneWrap = this.boneMap[key as unknown as PoseToboneMap];
             if (boneWrap.vec.length() === 0) continue;
+            boneWrap.vec.applyMatrix4(_matrix4.copy(this.skeleton.boneInverses[boneWrap.index]));
             _quater.setFromUnitVectors(boneWrap.originVec, boneWrap.vec);
             boneWrap.bone.quaternion.multiply(_quater);
         }
-        for (const key in this.boneMap) {
-            const boneWrap = this.boneMap[key as unknown as PoseToboneMap];
-            boneWrap.vec.set(0, 0, 0);
-        }
+        // for (const key in this.boneMap) {
+        //     const boneWrap = this.boneMap[key as unknown as PoseToboneMap];
+        //     boneWrap.vec.set(0, 0, 0);
+        // }
         // for (const key in this.boneMap) {
         //     const boneWrap = this.boneMap[key as unknown as PoseToboneMap];
         // }
