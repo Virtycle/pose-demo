@@ -16,7 +16,6 @@ import {
     AxesHelper,
     Skeleton,
     SkinnedMesh,
-    Matrix3,
     Matrix4,
 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -28,6 +27,7 @@ import { PoseDetection } from './Pose-detection';
 const rendererParam = { antialias: true, alpha: true };
 
 const _vec3 = new Vector3();
+const _matrix4 = new Matrix4();
 const _quater = new Quaternion();
 
 const defaultCameraLocation = {
@@ -65,6 +65,7 @@ export enum PoseIndexMap {
     // 'right_knee' = 26,
     // 'right_ankle' = 28,
 }
+
 export class Renderer3D {
     protected camera: PerspectiveCamera;
 
@@ -86,13 +87,9 @@ export class Renderer3D {
 
     private skeleton!: Skeleton;
 
-    private boneMap: { [key in PoseToboneMap]: { bone: Bone; vec: Vector3 } } = {} as {
-        [key in PoseToboneMap]: { bone: Bone; vec: Vector3 };
+    private boneMap: { [key in PoseToboneMap]: { bone: Bone; vec: Vector3; originVec: Vector3 } } = {} as {
+        [key in PoseToboneMap]: { bone: Bone; vec: Vector3; originVec: Vector3 };
     };
-
-    // private quater = new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), new Vector3(0, 1, 0));
-    // private matrix = new Matrix3();
-    private quater = new Quaternion();
 
     constructor(params: { div: HTMLDivElement }) {
         const divEle = params.div;
@@ -138,11 +135,11 @@ export class Renderer3D {
 
         const axesHelper = new AxesHelper(3);
         this.wrappedScene.add(axesHelper);
-        const matrix3 = new Matrix3().set(0, 0, 1, 1, 0, 0, 0, 1, 0).transpose();
-        const matrix4 = new Matrix4().setFromMatrix3(matrix3);
+        // const matrix3 = new Matrix3().set(0, 0, 1, 1, 0, 0, 0, 1, 0).transpose();
+        // const matrix4 = new Matrix4().setFromMatrix3(matrix3);
         // this.matrix.copy(matrix3);
-        const qua = new Quaternion().setFromRotationMatrix(matrix4);
-        this.quater.copy(qua);
+        // const qua = new Quaternion().setFromRotationMatrix(matrix4);
+        // this.quater.copy(qua);
         // console.log(qua, this.quater);
     }
 
@@ -167,8 +164,8 @@ export class Renderer3D {
         this.loader.load('/Xbot.glb', function (gltf) {
             _self.modelLoaded = true;
             const model = gltf.scene;
-            const skinnedMesh = model.getObjectByName('Beta_Joints');
-            _self.skeleton = (skinnedMesh as SkinnedMesh).skeleton;
+            const skinnedMesh = model.getObjectByName('Beta_Joints') as SkinnedMesh;
+            _self.skeleton = skinnedMesh.skeleton;
             // const animations = gltf.animations;
             const helper = new SkeletonHelper(model);
             _self.wrappedScene.add(model);
@@ -179,10 +176,18 @@ export class Renderer3D {
             const bones = _self.skeleton.bones;
             for (let index = 0; index < bones.length; index++) {
                 const bone = bones[index];
+                _vec3.set(bone.position.x, bone.position.y, bone.position.z);
+                _vec3.applyMatrix4(skinnedMesh.bindMatrix);
+                _matrix4.multiplyMatrices(bone.matrixWorld, _self.skeleton.boneInverses[index]);
+                _vec3.applyMatrix4(_matrix4).applyMatrix4(skinnedMesh.bindMatrixInverse).normalize();
+                console.log(_vec3.x, _vec3.y, _vec3.z, bone.name);
+                bone.getWorldDirection(_vec3)
+                console.log(_vec3.x, _vec3.y, _vec3.z)
                 if (PoseToboneMap.hasOwnProperty(bone.name)) {
                     _self.boneMap[PoseToboneMap[bone.name as keyof typeof PoseToboneMap]] = {
                         bone,
                         vec: new Vector3(),
+                        originVec: _vec3.clone(),
                     };
                 }
             }
@@ -206,23 +211,19 @@ export class Renderer3D {
                 !name1 ||
                 !name2 ||
                 !score1 ||
-                (score1 && score1 <= PoseDetection.threshold) ||
+                (score1 && score1 < PoseDetection.threshold) ||
                 !score2 ||
-                (score2 && score2 <= PoseDetection.threshold)
+                (score2 && score2 < PoseDetection.threshold)
             )
                 return;
-            _vec3.set(kp2.x - kp1.x, kp2.y - kp1.y, (kp2.z as number) - (kp1.z as number)).normalize();
-            console.log('origin', name1, kp1.x, kp1.y, kp1.z);
-            console.log('origin', name2, kp2.x, kp2.y, kp2.z);
-            // console.log('before', kp1.x, kp1.y, kp1.z);
-            _vec3.applyQuaternion(this.quater);
-            // console.log('after', name1, name2, _vec3.x, _vec3.y, _vec3.z);
-
+            _vec3.set(-kp2.x + kp1.x, -kp2.y + kp1.y, -(kp2.z as number) + (kp1.z as number)).normalize();
             if (this.boneMap[j as PoseToboneMap]) {
+                // console.log(name1, _vec3.x, _vec3.y, _vec3.z);
                 this.boneMap[j as PoseToboneMap].vec.copy(_vec3);
-                // if (j === 12 && i === 11) {
-                //     this.boneMap[i as PoseToboneMap].vec.copy(_vec3.multiplyScalar(-1));
-                // }
+                if (j === 12 && i === 11) {
+                    this.boneMap[j as PoseToboneMap].vec.copy(_vec3);
+                    this.boneMap[i as PoseToboneMap].vec.copy(_vec3.multiplyScalar(-1));
+                }
             }
         });
         this.updateBones();
@@ -231,18 +232,16 @@ export class Renderer3D {
     private updateBones() {
         for (const key in this.boneMap) {
             const boneWrap = this.boneMap[key as unknown as PoseToboneMap];
-            if (boneWrap.bone.parent && PoseToboneMap.hasOwnProperty(boneWrap.bone.parent.name)) {
-                const boneWrapParent =
-                    this.boneMap[PoseToboneMap[boneWrap.bone.parent.name as keyof typeof PoseToboneMap]];
-                if (boneWrapParent.vec.length() === 0 || boneWrap.vec.length() === 0) continue;
-                // console.log(boneWrapParent.bone.name, boneWrapParent.vec, boneWrap.bone.name, boneWrap.vec);
-                _quater.setFromUnitVectors(boneWrap.vec, boneWrapParent.vec);
-                boneWrapParent.bone.quaternion.copy(_quater);
-            }
+            if (boneWrap.vec.length() === 0) continue;
+            _quater.setFromUnitVectors(boneWrap.originVec, boneWrap.vec);
+            boneWrap.bone.quaternion.multiply(_quater);
         }
         for (const key in this.boneMap) {
             const boneWrap = this.boneMap[key as unknown as PoseToboneMap];
             boneWrap.vec.set(0, 0, 0);
         }
+        // for (const key in this.boneMap) {
+        //     const boneWrap = this.boneMap[key as unknown as PoseToboneMap];
+        // }
     }
 }
