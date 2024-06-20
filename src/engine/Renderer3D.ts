@@ -17,16 +17,19 @@ import {
     Skeleton,
     SkinnedMesh,
     Matrix4,
+    Vector4,
 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { Keypoint } from '@tensorflow-models/pose-detection';
-import * as poseDetection from '@tensorflow-models/pose-detection';
 import { PoseDetection } from './Pose-detection';
+// import * as poseDetection from '@tensorflow-models/pose-detection';
 
 const rendererParam = { antialias: true, alpha: true };
 
 const _vec3 = new Vector3();
+const _vec3_2 = new Vector3();
+const _vec4 = new Vector4();
 const _matrix4 = new Matrix4();
 const _quater = new Quaternion();
 
@@ -36,36 +39,59 @@ const defaultCameraLocation = {
     z: 6,
 };
 
-export enum PoseToboneMap {
-    'mixamorigLeftShoulder' = 11,
-    'mixamorigLeftArm' = 13,
-    'mixamorigLeftHand' = 15,
-    'mixamorigRightShoulder' = 12,
-    'mixamorigRightArm' = 14,
-    'mixamorigRightHand' = 16,
-    'mixamorigLeftUpLeg' = 23,
-    'mixamorigLeftLeg' = 25,
-    'mixamorigLeftFoot' = 27,
-    'mixamorigRightUpLeg' = 24,
-    'mixamorigRightLeg' = 26,
-    'mixamorigRightFoot' = 28,
-}
+type ValueOf<T> = T[keyof T];
 
-export enum PoseIndexMap {
-    'left_shoulder' = 11,
-    'left_elbow' = 13,
-    'left_wrist' = 15,
-    'right_shoulder' = 12,
-    'right_elbow' = 14,
-    'right_wrist' = 16,
-    'left_hip' = 23,
-    'left_knee' = 25,
-    'left_ankle' = 27,
-    'right_hip' = 24,
-    'right_knee' = 26,
-    'right_ankle' = 28,
-}
+export const BoneIndexMap = {
+    mixamorigLeftShoulder: 11,
+    mixamorigLeftArm: 13,
+    mixamorigLeftForeArm: 15,
+    // mixamorigLeftHand: 15,
+    mixamorigRightShoulder: 12,
+    mixamorigRightArm: 14,
+    mixamorigRightForeArm: 16,
+    // mixamorigRightHand: 16,
+    mixamorigLeftUpLeg: 23,
+    mixamorigLeftLeg: 25,
+    mixamorigLeftFoot: 27,
+    mixamorigRightUpLeg: 24,
+    mixamorigRightLeg: 26,
+    mixamorigRightFoot: 28,
+} as const;
 
+export type BoneIndexMapKeyType = keyof typeof BoneIndexMap;
+
+export const PoseIndexMap = {
+    left_shoulder: 11,
+    left_elbow: 13,
+    left_wrist: 15,
+    right_shoulder: 12,
+    right_elbow: 14,
+    right_wrist: 16,
+    left_hip: 23,
+    left_knee: 25,
+    left_ankle: 27,
+    right_hip: 24,
+    right_knee: 26,
+    right_ankle: 28,
+} as const;
+
+export type PoseIndexMapKeyType = keyof typeof PoseIndexMap;
+
+type PoseIndexType = ValueOf<typeof PoseIndexMap>;
+
+type BoneWrap = {
+    bone: Bone;
+    originVec: Vector3;
+    originQuater: Quaternion;
+    index: number;
+    parentIndex: number;
+};
+
+type IndexPoseMap = {
+    [key in PoseIndexType]: {
+        vec: Vector3;
+    };
+};
 export class Renderer3D {
     protected camera: PerspectiveCamera;
 
@@ -87,10 +113,9 @@ export class Renderer3D {
 
     private skeleton!: Skeleton;
 
-    private boneMap: { [key in PoseToboneMap]: { bone: Bone; vec: Vector3; originVec: Vector3; index: number } } =
-        {} as {
-            [key in PoseToboneMap]: { bone: Bone; vec: Vector3; originVec: Vector3; index: number };
-        };
+    private indexPoseMap: IndexPoseMap = {} as IndexPoseMap;
+
+    private boneWrapArr: BoneWrap[] = [];
 
     constructor(params: { div: HTMLDivElement }) {
         const divEle = params.div;
@@ -136,12 +161,14 @@ export class Renderer3D {
 
         const axesHelper = new AxesHelper(3);
         this.wrappedScene.add(axesHelper);
-        // const matrix3 = new Matrix3().set(0, 0, 1, 1, 0, 0, 0, 1, 0).transpose();
-        // const matrix4 = new Matrix4().setFromMatrix3(matrix3);
-        // this.matrix.copy(matrix3);
-        // const qua = new Quaternion().setFromRotationMatrix(matrix4);
-        // this.quater.copy(qua);
-        // console.log(qua, this.quater);
+
+        const keys = Object.keys(PoseIndexMap);
+        for (let index = 0; index < keys.length; index++) {
+            const key = keys[index];
+            this.indexPoseMap[PoseIndexMap[key as PoseIndexMapKeyType]] = {
+                vec: new Vector3(),
+            };
+        }
     }
 
     public resize(width: number, height: number, resizeRenderer = true): void {
@@ -175,20 +202,22 @@ export class Renderer3D {
                 if ((object as Mesh).isMesh) object.castShadow = true;
             });
             const bones = _self.skeleton.bones;
-            bones[0].updateWorldMatrix(true, true);
             for (let index = 0; index < bones.length; index++) {
                 const bone = bones[index];
                 _vec3.set(0, 0, 0);
                 bone.updateMatrix();
                 _vec3.applyMatrix4(bone.matrix).normalize();
-                if (PoseToboneMap.hasOwnProperty(bone.name)) {
-                    _self.boneMap[PoseToboneMap[bone.name as keyof typeof PoseToboneMap]] = {
-                        bone,
-                        vec: new Vector3(),
-                        originVec: _vec3.clone(),
-                        index,
-                    };
+                let parentIndex = -1;
+                if (bone.parent && bone.parent.type === 'Bone') {
+                    parentIndex = bones.findIndex((b) => b.name === bone.parent?.name);
                 }
+                _self.boneWrapArr.push({
+                    bone,
+                    originVec: _vec3.clone(),
+                    originQuater: bone.quaternion.clone(),
+                    index,
+                    parentIndex,
+                });
             }
         });
     }
@@ -201,62 +230,41 @@ export class Renderer3D {
         if (!poses || !this.modelLoaded) return;
         for (let index = 0; index < poses.length; index++) {
             const pose = poses[index];
-            if (pose.name && pose.score && PoseToboneMap.hasOwnProperty(pose.name)) {
+            if (pose.name && pose.score && PoseIndexMap.hasOwnProperty(pose.name)) {
                 if (pose.score >= PoseDetection.threshold) {
-                    this.boneMap[PoseToboneMap[pose.name as keyof typeof PoseToboneMap]].vec.set(
+                    this.indexPoseMap[PoseIndexMap[pose.name as keyof typeof PoseIndexMap]].vec.set(
                         pose.x,
-                        pose.y,
-                        pose.z as number,
+                        -pose.y,
+                        -(pose.z as number),
                     );
                 } else {
-                    this.boneMap[PoseToboneMap[pose.name as keyof typeof PoseToboneMap]].vec.set(0, 0, 0);
+                    this.indexPoseMap[PoseIndexMap[pose.name as keyof typeof PoseIndexMap]].vec.set(0, 0, 0);
                 }
             }
         }
-        // poseDetection.util.getAdjacentPairs(poseDetection.SupportedModels.BlazePose).forEach(([i, j]) => {
-        //     const kp1 = poses[i];
-        //     const kp2 = poses[j];
-        //     const name1 = kp1.name;
-        //     const name2 = kp2.name;
-        //     const score1 = kp1.score;
-        //     const score2 = kp2.score;
-        //     if (
-        //         !name1 ||
-        //         !name2 ||
-        //         !score1 ||
-        //         (score1 && score1 < PoseDetection.threshold) ||
-        //         !score2 ||
-        //         (score2 && score2 < PoseDetection.threshold)
-        //     )
-        //         return;
-        //     console.log(name2, name1);
-        //     _vec3.set(kp2.x - kp1.x, kp2.y - kp1.y, (kp2.z as number) - (kp1.z as number)).normalize();
-        //     if (this.boneMap[j as PoseToboneMap]) {
-        //         // console.log(name1, _vec3.x, _vec3.y, _vec3.z);
-        //         this.boneMap[j as PoseToboneMap].vec.copy(_vec3);
-        //         if (j === 12 && i === 11) {
-        //             this.boneMap[j as PoseToboneMap].vec.copy(_vec3);
-        //             this.boneMap[i as PoseToboneMap].vec.copy(_vec3.multiplyScalar(-1));
-        //         }
-        //     }
-        // });
         this.updateBones();
     }
 
     private updateBones() {
-        for (const key in this.boneMap) {
-            const boneWrap = this.boneMap[key as unknown as PoseToboneMap];
-            if (boneWrap.vec.length() === 0) continue;
-            boneWrap.vec.applyMatrix4(_matrix4.copy(this.skeleton.boneInverses[boneWrap.index]));
-            _quater.setFromUnitVectors(boneWrap.originVec, boneWrap.vec);
-            boneWrap.bone.quaternion.multiply(_quater);
+        for (let i = 0; i < this.boneWrapArr.length; i++) {
+            const boneWrap = this.boneWrapArr[i];
+            if (!BoneIndexMap.hasOwnProperty(boneWrap.bone.name) || boneWrap.parentIndex === -1) continue;
+            const mapVec = this.indexPoseMap[BoneIndexMap[boneWrap.bone.name as BoneIndexMapKeyType]];
+            if (mapVec.vec.length() === 0) continue;
+            const parentMapVec = this.indexPoseMap[BoneIndexMap[boneWrap.bone.parent?.name as BoneIndexMapKeyType]];
+            if (!parentMapVec || parentMapVec.vec.length() === 0) continue;
+            _vec3.subVectors(mapVec.vec, parentMapVec.vec);
+            _vec4
+                .set(_vec3.x, _vec3.y, _vec3.z, 0)
+                .applyMatrix4(_matrix4.copy(this.skeleton.boneInverses[boneWrap.parentIndex]))
+                .normalize();
+            _vec3_2.set(_vec4.x, _vec4.y, _vec4.z);
+            _quater.setFromUnitVectors(boneWrap.originVec, _vec3_2);
+            boneWrap.bone.quaternion.multiplyQuaternions(boneWrap.originQuater, _quater);
         }
-        // for (const key in this.boneMap) {
-        //     const boneWrap = this.boneMap[key as unknown as PoseToboneMap];
-        //     boneWrap.vec.set(0, 0, 0);
-        // }
-        // for (const key in this.boneMap) {
-        //     const boneWrap = this.boneMap[key as unknown as PoseToboneMap];
-        // }
+        for (const key in this.indexPoseMap) {
+            const mapItem = this.indexPoseMap[key as unknown as PoseIndexType];
+            mapItem.vec.set(0, 0, 0);
+        }
     }
 }
