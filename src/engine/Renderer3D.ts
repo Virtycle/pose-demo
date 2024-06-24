@@ -56,6 +56,11 @@ export const BoneIndexMap = {
     mixamorigRightUpLeg: 24,
     mixamorigRightLeg: 26,
     mixamorigRightFoot: 28,
+    mixamorigNeck: 0,
+    mixamorigHips: -1,
+    mixamorigSpine: -2,
+    mixamorigSpine1: -3,
+    mixamorigSpine2: -4,
 } as const;
 
 export type BoneIndexMapKeyType = keyof typeof BoneIndexMap;
@@ -73,6 +78,11 @@ export const PoseIndexMap = {
     right_hip: 24,
     right_knee: 26,
     right_ankle: 28,
+    nose: 0,
+    hip: -1,
+    spine: -2,
+    spine1: -3,
+    spine2: -4,
 } as const;
 
 export type PoseIndexMapKeyType = keyof typeof PoseIndexMap;
@@ -218,6 +228,7 @@ export class Renderer3D {
                     index,
                     parentIndex,
                 });
+                // console.log(bone.name);
             }
         });
     }
@@ -242,6 +253,15 @@ export class Renderer3D {
                 }
             }
         }
+        // const y = this.indexPoseMap[0].vec.y;
+        // if (y !== 0) {
+        //     this.indexPoseMap[-1].vec.set(0, y, 0);
+        //     this.indexPoseMap[-1].vec.set(0, y / 10, 0);
+        //     this.indexPoseMap[-2].vec.set(0, (y / 10) * 2, 0);
+        //     this.indexPoseMap[-3].vec.set(0, (y / 10) * 3, 0);
+        //     this.indexPoseMap[-4].vec.set(0, (y / 10) * 4, 0);
+        // }
+
         this.updateBones();
     }
 
@@ -252,15 +272,21 @@ export class Renderer3D {
             const mapVec = this.indexPoseMap[BoneIndexMap[boneWrap.bone.name as BoneIndexMapKeyType]];
             if (mapVec.vec.length() === 0) continue;
             const parentMapVec = this.indexPoseMap[BoneIndexMap[boneWrap.bone.parent?.name as BoneIndexMapKeyType]];
+
             if (!parentMapVec || parentMapVec.vec.length() === 0) continue;
+            // if (boneWrap.bone.name !== 'mixamorigLeftArm' && boneWrap.bone.name !== 'mixamorigLeftForeArm') continue;
             _vec3.subVectors(mapVec.vec, parentMapVec.vec);
             _vec4
                 .set(_vec3.x, _vec3.y, _vec3.z, 0)
-                .applyMatrix4(_matrix4.copy(this.skeleton.boneInverses[boneWrap.parentIndex]))
+                .applyMatrix4(_matrix4.copy(boneWrap.bone.parent?.matrixWorld as Matrix4).invert())
                 .normalize();
             _vec3_2.set(_vec4.x, _vec4.y, _vec4.z);
+            // if (boneWrap.bone.name === 'mixamorigLeftForeArm') {
+            //     console.log(_vec3.x, _vec3.y, _vec3.z, 'after');
+            // }
             _quater.setFromUnitVectors(boneWrap.originVec, _vec3_2);
             boneWrap.bone.quaternion.multiplyQuaternions(boneWrap.originQuater, _quater);
+            boneWrap.bone.updateWorldMatrix(false, false);
         }
         for (const key in this.indexPoseMap) {
             const mapItem = this.indexPoseMap[key as unknown as PoseIndexType];

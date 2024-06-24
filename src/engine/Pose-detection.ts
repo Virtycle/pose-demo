@@ -13,7 +13,7 @@ export class PoseDetection {
         const detectorConfig = {
             runtime: 'tfjs',
             enableSmoothing: true,
-            modelType: 'full',
+            modelType: 'lite',
         };
         await tf.ready();
         this.detector = await poseDetection.createDetector(model, detectorConfig);
